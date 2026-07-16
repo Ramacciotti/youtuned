@@ -21,6 +21,7 @@
   let youtunedSettings = {
     hideShorts: true,
     showDislikes: true,
+    blockedWords: []
   };
 
   // Lê as configurações salvas — usa chrome.storage quando disponível, caso contrário localStorage.
@@ -28,9 +29,10 @@
     return new Promise((resolve) => {
       try {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.get({ hideShorts: true, showDislikes: true }, (res) => {
+          chrome.storage.local.get({ hideShorts: true, showDislikes: true, blockedWords: '' }, (res) => {
             youtunedSettings.hideShorts = !!res.hideShorts;
             youtunedSettings.showDislikes = !!res.showDislikes;
+            youtunedSettings.blockedWords = parseBlockedWords(res.blockedWords || '');
             resolve(youtunedSettings);
           });
           return;
@@ -40,8 +42,10 @@
       try {
         const hs = localStorage.getItem('youtuned_hideShorts');
         const sd = localStorage.getItem('youtuned_showDislikes');
+        const bw = localStorage.getItem('youtuned_blockedWords');
         youtunedSettings.hideShorts = hs !== 'false';
         youtunedSettings.showDislikes = sd !== 'false';
+        youtunedSettings.blockedWords = parseBlockedWords(bw || '');
       } catch (e) {}
       resolve(youtunedSettings);
     });
@@ -96,9 +100,13 @@
             youtunedSettings.hideShorts = !!changes.hideShorts.newValue;
             if (youtunedSettings.hideShorts) enableShorts(); else disableShorts();
           }
-          if (changes.showDislikes) {
+                if (changes.showDislikes) {
             youtunedSettings.showDislikes = !!changes.showDislikes.newValue;
             if (youtunedSettings.showDislikes) enableDislikes(); else disableDislikes();
+          }
+          if (changes.blockedWords) {
+            youtunedSettings.blockedWords = parseBlockedWords(changes.blockedWords.newValue || '');
+            aplicarFiltroDePalavras();
           }
         });
         return;
@@ -113,6 +121,10 @@
       if (ev.key === 'youtuned_showDislikes') {
         youtunedSettings.showDislikes = ev.newValue !== 'false';
         if (youtunedSettings.showDislikes) enableDislikes(); else disableDislikes();
+      }
+      if (ev.key === 'youtuned_blockedWords') {
+        youtunedSettings.blockedWords = parseBlockedWords(ev.newValue || '');
+        aplicarFiltroDePalavras();
       }
     });
   }
@@ -212,6 +224,7 @@
       removerDescobertaAvancadaDeTemas();
       limparItensVazios();
       restaurarDislikes();
+      aplicarFiltroDePalavras();
     });
 
     observador.observe(document.body || document.documentElement, {
@@ -253,6 +266,66 @@
     }
 
     badge.textContent = `↓ ${formatarNumero(dislikes)}`;
+  }
+
+  function parseBlockedWords(value) {
+    return value
+      .split(',')
+      .map((word) => word.trim().toLowerCase())
+      .filter((word) => word.length > 0);
+  }
+
+  function textoContemPalavraBloqueada(text, blockedWords) {
+    if (!text) return false;
+    const texto = text.toLowerCase();
+    return blockedWords.some((word) => texto.includes(word));
+  }
+
+  function restoreBlockedWordHiddenItems() {
+    document.querySelectorAll('[data-youtuned-blocked-word="true"]').forEach((el) => {
+      el.style.removeProperty('display');
+      el.removeAttribute('hidden');
+      el.removeAttribute('aria-hidden');
+      delete el.dataset.youtunedBlockedWord;
+    });
+  }
+
+  function findVideoCardForElement(element) {
+    return element.closest(
+      'ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-rich-grid-media, ytm-rich-item-renderer, ytm-grid-video-renderer, ytd-rich-grid-slim-media, ytd-rich-item-renderer'
+    );
+  }
+
+  function aplicarFiltroDePalavras() {
+    restoreBlockedWordHiddenItems();
+    if (!Array.isArray(youtunedSettings.blockedWords) || youtunedSettings.blockedWords.length === 0) {
+      return;
+    }
+
+    const titles = Array.from(document.querySelectorAll('yt-formatted-string#video-title, h1.title, h1.title.style-scope.ytd-watch-metadata, ytd-rich-item-renderer h3, ytd-video-renderer h3, ytd-grid-video-renderer h3, ytd-compact-video-renderer h3'));
+    titles.forEach((title) => {
+      const text = title.textContent || title.innerText || '';
+      if (textoContemPalavraBloqueada(text, youtunedSettings.blockedWords)) {
+        const hideTarget = findVideoCardForElement(title) || title;
+        if (hideTarget) {
+          hideTarget.remove();
+        }
+      }
+    });
+
+    const comments = Array.from(document.querySelectorAll('#content-text, yt-formatted-string#comment-text, #main-text, #content-text ytd-expander'));
+    comments.forEach((comment) => {
+      const text = comment.textContent || comment.innerText || '';
+      if (textoContemPalavraBloqueada(text, youtunedSettings.blockedWords)) {
+        const commentItem = comment.closest('ytd-comment-thread-renderer, ytd-comment-renderer, ytd-item-section-renderer') || comment;
+        if (commentItem && commentItem.style.display !== 'none') {
+          commentItem.style.setProperty('display', 'none', 'important');
+          commentItem.hidden = true;
+          commentItem.setAttribute('aria-hidden', 'true');
+          commentItem.dataset.youtunedBlockedWord = 'true';
+        }
+      }
+    });
   }
 
   // Função que busca a contagem de dislikes diretamente em uma API pública.
@@ -393,6 +466,8 @@
     if (youtunedSettings.showDislikes) {
       enableDislikes();
     }
+    aplicarFiltroDePalavras();
+    iniciarObservadorDeFiltro();
   }
 
   // Garante que a extensão rode quando a navegação do YouTube terminar de carregar a página.
@@ -562,6 +637,7 @@
   }
 
   let thumbnailObserver = null;
+  let wordFilterObserver = null;
 
   // Inicia observador para detectar novas thumbnails dinamicamente.
   function iniciarProcessamentoDeThumbnails() {
@@ -576,6 +652,15 @@
     thumbnailObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 
+  function iniciarObservadorDeFiltro() {
+    if (wordFilterObserver) return;
+    wordFilterObserver = new MutationObserver(() => {
+      aplicarFiltroDePalavras();
+    });
+    wordFilterObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  }
+
   // Expor função global para ser chamada no flow principal.
   window.iniciarProcessamentoDeThumbnails = iniciarProcessamentoDeThumbnails;
+  window.iniciarObservadorDeFiltro = iniciarObservadorDeFiltro;
 })();
