@@ -1,0 +1,8 @@
+{
+  "name": "youtuned",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "validate": "node -e \"new Function(require('fs').readFileSync('content.js','utf8')); new Function(require('fs').readFileSync('userscript.js','utf8').replace(/^[\s\S]*?==\/UserScript==\\n/,'').replace(/^[\s\S]*?\\n\\n/,'');); console.log('Sintaxe OK');\""
+  }
+}
