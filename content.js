@@ -261,6 +261,11 @@
       return;
     }
 
+    const existingBadge = document.getElementById(idDoBadgeDeDislikes);
+    if (existingBadge) {
+      existingBadge.remove();
+    }
+
     const parametrosDaUrl = new URLSearchParams(window.location.search);
     const videoId = parametrosDaUrl.get('v');
     if (!videoId) {
@@ -283,7 +288,6 @@
       const likes = typeof dados.likes === 'number' ? dados.likes : null;
       const dislikes = typeof dados.dislikes === 'number' ? dados.dislikes : null;
       if (dislikes != null || likes != null) {
-        mostrarBadgeDeDislikes(dislikes);
         mostrarContadoresNosBotoes(likes, dislikes);
       }
     } catch (erro) {
