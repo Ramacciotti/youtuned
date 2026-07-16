@@ -34,6 +34,18 @@
     });
   }
 
+  function removerDescobertaAvancadaDeTemas() {
+    document.querySelectorAll('ytd-chips-shelf-with-video-shelf-renderer').forEach((elemento) => {
+      const texto = (elemento.textContent || '').toLowerCase();
+      if (!texto.includes('descoberta avançada de novos temas')) {
+        return;
+      }
+      const alvo = elemento.closest('ytd-chips-shelf-with-video-shelf-renderer') || elemento;
+      alvo.style.setProperty('display', 'none', 'important');
+      alvo.setAttribute('aria-hidden', 'true');
+    });
+  }
+
   // Função que injeta uma regra CSS para remover Shorts antes que o conteúdo seja exibido.
   function aplicarCSSGlobal() {
     if (document.getElementById('youtube-shorts-remover-style')) {
@@ -139,6 +151,7 @@
   function iniciarObservador() {
     const observador = new MutationObserver(() => {
       esconderShortsNoDOM();
+      removerDescobertaAvancadaDeTemas();
       restaurarDislikes();
     });
 
@@ -152,6 +165,7 @@
   function iniciarExtensao() {
     aplicarCSSGlobal();
     esconderShortsNoDOM();
+    removerDescobertaAvancadaDeTemas();
     iniciarObservador();
     restaurarDislikes();
     iniciarProcessamentoDeThumbnails();

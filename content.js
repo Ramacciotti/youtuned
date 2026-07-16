@@ -51,6 +51,7 @@
   function enableShorts() {
     esconderShortsPorCSS();
     esconderShortsNoDOM();
+    removerDescobertaAvancadaDeTemas();
     limparItensVazios();
     iniciarObservador();
   }
@@ -188,6 +189,18 @@
     });
   }
 
+  function removerDescobertaAvancadaDeTemas() {
+    document.querySelectorAll('ytd-chips-shelf-with-video-shelf-renderer').forEach((elemento) => {
+      const texto = (elemento.textContent || '').toLowerCase();
+      if (!texto.includes('descoberta avançada de novos temas')) {
+        return;
+      }
+      const alvo = elemento.closest('ytd-chips-shelf-with-video-shelf-renderer') || elemento;
+      alvo.style.setProperty('display', 'none', 'important');
+      alvo.dataset.youtunedHidden = 'true';
+    });
+  }
+
   // Função que cria um observador para acompanhar as mudanças dinâmicas da página do YouTube.
   function iniciarObservador() {
     if (window.__youtubeShortsObserver) {
@@ -196,6 +209,7 @@
 
     const observador = new MutationObserver(() => {
       esconderShortsNoDOM();
+      removerDescobertaAvancadaDeTemas();
       limparItensVazios();
       restaurarDislikes();
     });
