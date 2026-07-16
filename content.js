@@ -17,6 +17,105 @@
   // Define a URL da API pública usada para recuperar a contagem de dislikes.
   const urlDaApiDeDislikes = 'https://returnyoutubedislikeapi.com/votes';
 
+  // Configurações da extensão (lidas de chrome.storage.local quando disponível).
+  let youtunedSettings = {
+    hideShorts: true,
+    showDislikes: true,
+  };
+
+  // Lê as configurações salvas — usa chrome.storage quando disponível, caso contrário localStorage.
+  function readSettings() {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get({ hideShorts: true, showDislikes: true }, (res) => {
+            youtunedSettings.hideShorts = !!res.hideShorts;
+            youtunedSettings.showDislikes = !!res.showDislikes;
+            resolve(youtunedSettings);
+          });
+          return;
+        }
+      } catch (e) {}
+      // Fallback para localStorage (userscript / ambientes sem chrome.storage)
+      try {
+        const hs = localStorage.getItem('youtuned_hideShorts');
+        const sd = localStorage.getItem('youtuned_showDislikes');
+        youtunedSettings.hideShorts = hs !== 'false';
+        youtunedSettings.showDislikes = sd !== 'false';
+      } catch (e) {}
+      resolve(youtunedSettings);
+    });
+  }
+
+  // Aplica as configurações em tempo de execução: habilita/desabilita recursos.
+  function enableShorts() {
+    esconderShortsPorCSS();
+    esconderShortsNoDOM();
+    limparItensVazios();
+    iniciarObservador();
+  }
+
+  function disableShorts() {
+    // Remove a folha de estilo injetada
+    const estilo = document.getElementById('youtube-shorts-remover-style');
+    if (estilo && estilo.parentNode) estilo.parentNode.removeChild(estilo);
+    // Reexibe elementos que marcamos como ocultos manualmente
+    document.querySelectorAll('[data-shorts-hidden="true"]').forEach((el) => {
+      el.style.removeProperty('display');
+      el.removeAttribute('aria-hidden');
+      delete el.dataset.shortsHidden;
+    });
+    // Para o observador se estiver ativo
+    if (window.__youtubeShortsObserver) {
+      try { window.__youtubeShortsObserver.disconnect(); } catch {};
+      delete window.__youtubeShortsObserver;
+    }
+  }
+
+  function enableDislikes() {
+    restaurarDislikes();
+    iniciarProcessamentoDeThumbnails();
+  }
+
+  function disableDislikes() {
+    // Remove badge(s) das thumbnails
+    document.querySelectorAll('.youtuned-vote-badge').forEach((b) => b.remove());
+    // Remove badge único de vídeo
+    const badge = document.getElementById(idDoBadgeDeDislikes);
+    if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+  }
+
+  // Observa mudanças nas configurações (chrome.storage quando disponível, senão storage event local)
+  function listenSettingsChanges() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area !== 'local') return;
+          if (changes.hideShorts) {
+            youtunedSettings.hideShorts = !!changes.hideShorts.newValue;
+            if (youtunedSettings.hideShorts) enableShorts(); else disableShorts();
+          }
+          if (changes.showDislikes) {
+            youtunedSettings.showDislikes = !!changes.showDislikes.newValue;
+            if (youtunedSettings.showDislikes) enableDislikes(); else disableDislikes();
+          }
+        });
+        return;
+      }
+    } catch (e) {}
+    // Fallback para localStorage events (não funciona entre extensão e página, mas serve em alguns casos)
+    window.addEventListener('storage', (ev) => {
+      if (ev.key === 'youtuned_hideShorts') {
+        youtunedSettings.hideShorts = ev.newValue !== 'false';
+        if (youtunedSettings.hideShorts) enableShorts(); else disableShorts();
+      }
+      if (ev.key === 'youtuned_showDislikes') {
+        youtunedSettings.showDislikes = ev.newValue !== 'false';
+        if (youtunedSettings.showDislikes) enableDislikes(); else disableDislikes();
+      }
+    });
+  }
+
   // Função responsável por esconder os elementos que representam Shorts no DOM atual.
   function esconderShortsNoDOM() {
     const elementosEncontrados = document.querySelectorAll(seletoresParaEsconder.join(','));
@@ -269,18 +368,23 @@
 
   // Função que inicializa a extensão e executa o processo de ocultação em cascata.
   function iniciarExtensao() {
-    esconderShortsPorCSS();
-    esconderShortsNoDOM();
-    limparItensVazios();
-    iniciarObservador();
-    restaurarDislikes();
-    iniciarProcessamentoDeThumbnails();
+    // Aplica recursos conforme as configurações lidas.
+    if (youtunedSettings.hideShorts) {
+      enableShorts();
+    }
+    if (youtunedSettings.showDislikes) {
+      enableDislikes();
+    }
   }
 
   // Garante que a extensão rode quando a navegação do YouTube terminar de carregar a página.
   document.addEventListener('yt-navigate-finish', iniciarExtensao, { once: false });
   window.addEventListener('load', iniciarExtensao, { once: true });
-  iniciarExtensao();
+  // Lê configurações antes de iniciar e escuta mudanças.
+  readSettings().then(() => {
+    listenSettingsChanges();
+    iniciarExtensao();
+  });
 })();
 
 // =====================
@@ -340,17 +444,60 @@
     }
   }
 
+  // Determina se o tema do YouTube / container aparenta ser escuro.
+  function isDarkThemeForContainer(container) {
+    try {
+      const html = document.documentElement;
+      if (html.hasAttribute('dark')) return true;
+      if (html.classList && html.classList.contains('dark')) return true;
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
+      // Fallback: calcula luminância do background do container
+      const bg = getComputedStyle(container || document.body).backgroundColor || '';
+      const m = bg.match(/rgba?\((\d+), ?(\d+), ?(\d+)/);
+      if (m) {
+        const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return lum < 128;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   // Cria um badge pequeno e legível para a thumbnail com likes/dislikes.
-  function criarBadgeDeThumbnail(likes, dislikes) {
+  // Usa SVGs com `currentColor` para permitir colorir os ícones conforme o tema.
+  function criarBadgeDeThumbnail(likes, dislikes, container) {
+    const dark = isDarkThemeForContainer(container);
+    const iconColor = dark ? '#fff' : '#000';
+    const bgColor = dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.9)';
+
     const badge = document.createElement('div');
     badge.className = 'youtuned-vote-badge';
-    badge.style.cssText = 'position:absolute; left:6px; bottom:6px; z-index:9999; background:rgba(0,0,0,0.7); color:#fff; padding:4px 6px; border-radius:12px; font-size:11px; display:inline-flex; gap:8px; align-items:center; font-weight:600;';
-    const likesSpan = document.createElement('span');
-    likesSpan.textContent = likes != null ? `👍 ${Intl.NumberFormat('pt-BR').format(likes)}` : '';
-    const dislikesSpan = document.createElement('span');
-    dislikesSpan.textContent = dislikes != null ? `👎 ${Intl.NumberFormat('pt-BR').format(dislikes)}` : '';
-    badge.appendChild(likesSpan);
-    if (likes != null && dislikes != null) badge.appendChild(dislikesSpan);
+    badge.style.cssText = `position:absolute; top:6px; right:6px; z-index:9999; background:${bgColor}; color:${iconColor}; padding:4px 8px; border-radius:12px; font-size:11px; display:inline-flex; gap:8px; align-items:center; font-weight:600;`;
+
+    const THUMBS_UP_SVG = `<svg viewBox="0 0 48 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M38,17H31l.4-3.3C32,8.8,31,4.9,27.8,4h-.3A2,2,0,0,0,26,5.2s-5.7,12-9,14.4V40h1.3a1.6,1.6,0,0,1,1.2.4c1.4,1,6.1,3.6,8.5,3.6h5c5.9,0,11-4,11.5-11.9h0l.5-8A6.7,6.7,0,0,0,38,17ZM3,22V38a2,2,0,0,0,2,2h8V20H5A2,2,0,0,0,3,22Z"/></svg>`;
+    const THUMBS_DOWN_SVG = `<svg viewBox="0 0 48 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M45,24l-.5-8h0C44,8,38.9,4,33,4H28c-2.4,0-7.1,2.6-8.5,3.6a1.6,1.6,0,0,1-1.2.4H17V28.4c3.3,2.4,9,14.4,9,14.4A2,2,0,0,0,27.5,44h.3c3.2-.9,4.2-4.8,3.6-9.7L31,31h7A6.7,6.7,0,0,0,45,24ZM5,28h8V8H5a2,2,0,0,0-2,2V26A2,2,0,0,0,5,28Z"/></svg>`;
+
+    function iconSVGFromString(svgString) {
+      return `<span style="display:inline-flex; width:12px; height:12px;" aria-hidden="true">${svgString}</span>`;
+    }
+
+    if (likes != null) {
+      const s = document.createElement('span');
+      s.style.display = 'inline-flex';
+      s.style.alignItems = 'center';
+      s.style.gap = '6px';
+      s.innerHTML = `${iconSVGFromString(THUMBS_UP_SVG)}<span>${Intl.NumberFormat('pt-BR').format(likes)}</span>`;
+      badge.appendChild(s);
+    }
+    if (dislikes != null) {
+      const s2 = document.createElement('span');
+      s2.style.display = 'inline-flex';
+      s2.style.alignItems = 'center';
+      s2.style.gap = '6px';
+      s2.innerHTML = `${iconSVGFromString(THUMBS_DOWN_SVG)}<span>${Intl.NumberFormat('pt-BR').format(dislikes)}</span>`;
+      badge.appendChild(s2);
+    }
+
     return badge;
   }
 
@@ -374,7 +521,7 @@
     const votes = cache[videoId] || await fetchVotes(videoId);
     if (!votes) return;
 
-    const badge = criarBadgeDeThumbnail(votes.likes, votes.dislikes);
+    const badge = criarBadgeDeThumbnail(votes.likes, votes.dislikes, container);
     // Remove badge antigo se existir
     const existente = container.querySelector('.youtuned-vote-badge');
     if (existente) existente.remove();

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTuned</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 12px; width:220px }
+    .row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
+    label { font-size:14px }
+    input[type=checkbox] { width:18px; height:18px }
+    .hint { font-size:12px; color:#666 }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label for="toggleShorts">YouTube Shorts</label>
+    <input id="toggleShorts" type="checkbox" />
+  </div>
+  <div class="hint">Bloqueia/blinda a seção de Shorts na interface.</div>
+  <hr />
+  <div class="row">
+    <label for="toggleDislikes">Dislikes</label>
+    <input id="toggleDislikes" type="checkbox" />
+  </div>
+  <div class="hint">Mostra/oculta o contador de dislikes (via API externa).</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

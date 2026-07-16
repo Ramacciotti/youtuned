@@ -216,16 +216,56 @@
     }
   }
 
-  function criarBadgeDeThumbnail(likes, dislikes) {
+  function criarBadgeDeThumbnail(likes, dislikes, container) {
+    // Determina tema (semelhante à versão da extensão)
+    function isDark(container) {
+      try {
+        const html = document.documentElement;
+        if (html.hasAttribute('dark')) return true;
+        if (html.classList && html.classList.contains('dark')) return true;
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
+        const bg = getComputedStyle(container || document.body).backgroundColor || '';
+        const m = bg.match(/rgba?\((\d+), ?(\d+), ?(\d+)/);
+        if (m) {
+          const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+          const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          return lum < 128;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    const dark = isDark();
+    const iconColor = dark ? '#fff' : '#000';
+    const bgColor = dark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.9)';
+
     const badge = document.createElement('div');
     badge.className = 'youtuned-vote-badge';
-    badge.style.cssText = 'position:absolute; left:6px; bottom:6px; z-index:9999; background:rgba(0,0,0,0.7); color:#fff; padding:4px 6px; border-radius:12px; font-size:11px; display:inline-flex; gap:8px; align-items:center; font-weight:600;';
-    const likesSpan = document.createElement('span');
-    likesSpan.textContent = likes != null ? `👍 ${Intl.NumberFormat('pt-BR').format(likes)}` : '';
-    const dislikesSpan = document.createElement('span');
-    dislikesSpan.textContent = dislikes != null ? `👎 ${Intl.NumberFormat('pt-BR').format(dislikes)}` : '';
-    badge.appendChild(likesSpan);
-    if (likes != null && dislikes != null) badge.appendChild(dislikesSpan);
+    badge.style.cssText = `position:absolute; top:6px; right:6px; z-index:9999; background:${bgColor}; color:${iconColor}; padding:4px 8px; border-radius:12px; font-size:11px; display:inline-flex; gap:8px; align-items:center; font-weight:600;`;
+
+    const THUMBS_UP_SVG = `<svg viewBox="0 0 48 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M38,17H31l.4-3.3C32,8.8,31,4.9,27.8,4h-.3A2,2,0,0,0,26,5.2s-5.7,12-9,14.4V40h1.3a1.6,1.6,0,0,1,1.2.4c1.4,1,6.1,3.6,8.5,3.6h5c5.9,0,11-4,11.5-11.9h0l.5-8A6.7,6.7,0,0,0,38,17ZM3,22V38a2,2,0,0,0,2,2h8V20H5A2,2,0,0,0,3,22Z"/></svg>`;
+    const THUMBS_DOWN_SVG = `<svg viewBox="0 0 48 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M45,24l-.5-8h0C44,8,38.9,4,33,4H28c-2.4,0-7.1,2.6-8.5,3.6a1.6,1.6,0,0,1-1.2.4H17V28.4c3.3,2.4,9,14.4,9,14.4A2,2,0,0,0,27.5,44h.3c3.2-.9,4.2-4.8,3.6-9.7L31,31h7A6.7,6.7,0,0,0,45,24ZM5,28h8V8H5a2,2,0,0,0-2,2V26A2,2,0,0,0,5,28Z"/></svg>`;
+
+    function iconSVGFromString(svgString) {
+      return `<span style="display:inline-flex; width:12px; height:12px;" aria-hidden="true">${svgString}</span>`;
+    }
+
+    if (likes != null) {
+      const s = document.createElement('span');
+      s.style.display = 'inline-flex';
+      s.style.alignItems = 'center';
+      s.style.gap = '6px';
+      s.innerHTML = `${iconSVGFromString(THUMBS_UP_SVG)}<span>${Intl.NumberFormat('pt-BR').format(likes)}</span>`;
+      badge.appendChild(s);
+    }
+    if (dislikes != null) {
+      const s2 = document.createElement('span');
+      s2.style.display = 'inline-flex';
+      s2.style.alignItems = 'center';
+      s2.style.gap = '6px';
+      s2.innerHTML = `${iconSVGFromString(THUMBS_DOWN_SVG)}<span>${Intl.NumberFormat('pt-BR').format(dislikes)}</span>`;
+      badge.appendChild(s2);
+    }
     return badge;
   }
 
@@ -243,7 +283,7 @@
     const cache = loadVotesCache();
     const votes = cache[videoId] || await fetchVotes(videoId);
     if (!votes) return;
-    const badge = criarBadgeDeThumbnail(votes.likes, votes.dislikes);
+    const badge = criarBadgeDeThumbnail(votes.likes, votes.dislikes, container);
     const existente = container.querySelector('.youtuned-vote-badge');
     if (existente) existente.remove();
     container.appendChild(badge);
