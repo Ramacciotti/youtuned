@@ -10,6 +10,11 @@
 // ==/UserScript==
 
 (function () {
+  let domWorkTimer = null;
+  let thumbnailProcessTimer = null;
+  const DOM_WORK_DEBOUNCE_MS = 120;
+  const THUMBNAIL_PROCESS_DEBOUNCE_MS = 250;
+
   // Define os seletores que normalmente representam Shorts na interface do YouTube.
   const seletoresParaEsconder = [
     'a[href*="/shorts/"]',
@@ -147,12 +152,23 @@
     buscarContagemDeDislikes();
   }
 
-  // Função que cria um observador para acompanhar mudanças dinâmicas na página após navegação.
-  function iniciarObservador() {
-    const observador = new MutationObserver(() => {
+  function scheduleDomWork() {
+    if (domWorkTimer) {
+      return;
+    }
+
+    domWorkTimer = window.setTimeout(() => {
+      domWorkTimer = null;
       esconderShortsNoDOM();
       removerDescobertaAvancadaDeTemas();
       restaurarDislikes();
+    }, DOM_WORK_DEBOUNCE_MS);
+  }
+
+  // Função que cria um observador para acompanhar mudanças dinâmicas na página após navegação.
+  function iniciarObservador() {
+    const observador = new MutationObserver(() => {
+      scheduleDomWork();
     });
 
     observador.observe(document.body || document.documentElement, {
@@ -305,16 +321,31 @@
 
   function processAllThumbnails() {
     const anchors = Array.from(document.querySelectorAll('a[href*="/watch?v="], a[href*="/shorts/"]'));
-    anchors.forEach((a) => processThumbnail(a));
+    anchors.forEach((a) => {
+      if (a.dataset.youtunedProcessed !== 'true') {
+        processThumbnail(a);
+      }
+    });
+  }
+
+  function scheduleThumbnailProcessing() {
+    if (thumbnailProcessTimer) {
+      return;
+    }
+
+    thumbnailProcessTimer = window.setTimeout(() => {
+      thumbnailProcessTimer = null;
+      processAllThumbnails();
+    }, THUMBNAIL_PROCESS_DEBOUNCE_MS);
   }
 
   let thumbnailObserver = null;
 
   function iniciarProcessamentoDeThumbnails() {
-    processAllThumbnails();
+    scheduleThumbnailProcessing();
     if (thumbnailObserver) return;
     thumbnailObserver = new MutationObserver(() => {
-      processAllThumbnails();
+      scheduleThumbnailProcessing();
     });
     thumbnailObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }

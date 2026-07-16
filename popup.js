@@ -1,5 +1,4 @@
 // Script do popup: gerencia as preferências do usuário e persiste em chrome.storage.local
-// Comentários em português explicando cada passo.
 
 // Obtém referências aos controles do popup
 const toggleShorts = document.getElementById('toggleShorts');
@@ -64,3 +63,4 @@ blockedWordsTextarea.addEventListener('input', () => {
 
 // Inicializa o popup carregando valores atuais
 loadPopupSettings();
+

@@ -24,6 +24,17 @@
     blockedWords: []
   };
 
+  let pendingDomWorkTimer = null;
+  let lastBlockedWordsSignature = '';
+  let thumbnailPendingNodes = new Set();
+  let thumbnailProcessingScheduled = false;
+
+  const DOM_WORK_DEBOUNCE_MS = 120;
+  const THUMBNAIL_PROCESS_DEBOUNCE_MS = 250;
+  let domWorkTimer = null;
+  let dislikeRetryTimer = null;
+  let thumbnailProcessTimer = null;
+
   // Lê as configurações salvas — usa chrome.storage quando disponível, caso contrário localStorage.
   function readSettings() {
     return new Promise((resolve) => {
@@ -58,9 +69,14 @@
     removerDescobertaAvancadaDeTemas();
     limparItensVazios();
     iniciarObservador();
+    agendarTrabalhoDOM();
   }
 
   function disableShorts() {
+    if (domWorkTimer) {
+      clearTimeout(domWorkTimer);
+      domWorkTimer = null;
+    }
     // Remove a folha de estilo injetada
     const estilo = document.getElementById('youtube-shorts-remover-style');
     if (estilo && estilo.parentNode) estilo.parentNode.removeChild(estilo);
@@ -83,6 +99,10 @@
   }
 
   function disableDislikes() {
+    if (dislikeRetryTimer) {
+      clearTimeout(dislikeRetryTimer);
+      dislikeRetryTimer = null;
+    }
     // Remove badge(s) das thumbnails
     document.querySelectorAll('.youtuned-vote-badge').forEach((b) => b.remove());
     // Remove badge único de vídeo
@@ -213,6 +233,28 @@
     });
   }
 
+  function scheduleDomWork() {
+    if (domWorkTimer) {
+      return;
+    }
+
+    domWorkTimer = window.setTimeout(() => {
+      domWorkTimer = null;
+      if (youtunedSettings.hideShorts) {
+        esconderShortsPorCSS();
+        esconderShortsNoDOM();
+        removerDescobertaAvancadaDeTemas();
+        limparItensVazios();
+      }
+      if (youtunedSettings.showDislikes) {
+        restaurarDislikes();
+      }
+      if (Array.isArray(youtunedSettings.blockedWords) && youtunedSettings.blockedWords.length > 0) {
+        aplicarFiltroDePalavras();
+      }
+    }, DOM_WORK_DEBOUNCE_MS);
+  }
+
   // Função que cria um observador para acompanhar as mudanças dinâmicas da página do YouTube.
   function iniciarObservador() {
     if (window.__youtubeShortsObserver) {
@@ -220,11 +262,7 @@
     }
 
     const observador = new MutationObserver(() => {
-      esconderShortsNoDOM();
-      removerDescobertaAvancadaDeTemas();
-      limparItensVazios();
-      restaurarDislikes();
-      aplicarFiltroDePalavras();
+      scheduleDomWork();
     });
 
     observador.observe(document.body || document.documentElement, {
@@ -297,7 +335,12 @@
   }
 
   function aplicarFiltroDePalavras() {
-    restoreBlockedWordHiddenItems();
+    const signature = (Array.isArray(youtunedSettings.blockedWords) ? youtunedSettings.blockedWords : []).join('|');
+    if (signature !== lastBlockedWordsSignature) {
+      restoreBlockedWordHiddenItems();
+      lastBlockedWordsSignature = signature;
+    }
+
     if (!Array.isArray(youtunedSettings.blockedWords) || youtunedSettings.blockedWords.length === 0) {
       return;
     }
@@ -456,8 +499,19 @@
 
     const container = document.querySelector('#top-level-buttons-computed, ytd-menu-renderer, #actions');
     if (!container) {
-      window.setTimeout(restaurarDislikes, 1000);
+      if (dislikeRetryTimer) {
+        clearTimeout(dislikeRetryTimer);
+      }
+      dislikeRetryTimer = window.setTimeout(() => {
+        dislikeRetryTimer = null;
+        restaurarDislikes();
+      }, 1000);
       return;
+    }
+
+    if (dislikeRetryTimer) {
+      clearTimeout(dislikeRetryTimer);
+      dislikeRetryTimer = null;
     }
 
     buscarContagemDeDislikes();
@@ -494,6 +548,8 @@
   // Cache local para votos recuperados de forma a reduzir requisições.
   const CACHE_KEY = 'youtuned_votes_cache_v1';
   const VOTES_API = 'https://returnyoutubedislikeapi.com/votes?videoId=';
+  let votesCache = null;
+  let inFlightThumbnailRequests = new Set();
 
   function isWatchPage() {
     const params = new URLSearchParams(window.location.search);
@@ -501,15 +557,20 @@
   }
 
   function loadVotesCache() {
-    try {
-      return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    } catch {
-      return {};
+    if (votesCache !== null) {
+      return votesCache;
     }
+    try {
+      votesCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    } catch {
+      votesCache = {};
+    }
+    return votesCache;
   }
 
   function saveVotesCache(cache) {
     try {
+      votesCache = cache;
       localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch {}
   }
@@ -535,6 +596,9 @@
     if (!videoId) return null;
     const cache = loadVotesCache();
     if (cache[videoId]) return cache[videoId];
+    if (inFlightThumbnailRequests.has(videoId)) return null;
+
+    inFlightThumbnailRequests.add(videoId);
     try {
       const res = await fetch(VOTES_API + encodeURIComponent(videoId), { headers: { Accept: 'application/json' } });
       if (!res.ok) return null;
@@ -545,6 +609,8 @@
       return votes;
     } catch (e) {
       return null;
+    } finally {
+      inFlightThumbnailRequests.delete(videoId);
     }
   }
 
@@ -637,9 +703,23 @@
     if (isWatchPage()) {
       return;
     }
-    // Seleciona links que levam a vídeos ou shorts corretamente.
     const anchors = Array.from(document.querySelectorAll('a[href*="/watch?v="], a[href*="/shorts/"]'));
-    anchors.forEach((a) => processThumbnail(a));
+    anchors.forEach((a) => {
+      if (a.dataset.youtunedProcessed !== 'true') {
+        processThumbnail(a);
+      }
+    });
+  }
+
+  function scheduleThumbnailProcessing() {
+    if (thumbnailProcessTimer) {
+      return;
+    }
+
+    thumbnailProcessTimer = window.setTimeout(() => {
+      thumbnailProcessTimer = null;
+      processAllThumbnails();
+    }, THUMBNAIL_PROCESS_DEBOUNCE_MS);
   }
 
   let thumbnailObserver = null;
@@ -650,10 +730,10 @@
     if (isWatchPage()) {
       return;
     }
-    processAllThumbnails();
+    scheduleThumbnailProcessing();
     if (thumbnailObserver) return;
     thumbnailObserver = new MutationObserver(() => {
-      processAllThumbnails();
+      scheduleThumbnailProcessing();
     });
     thumbnailObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }

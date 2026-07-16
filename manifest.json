@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "YouTuned",
   "version": "1.0.0",
-  "description": "Remove os blocos de Shorts do YouTube em navegadores compatíveis com extensões e restaura o contador de dislikes.",
+  "description": "Remove youtube shorts, restaura dislikes e remove vídeos e comentários com palavras bloqueadas",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
