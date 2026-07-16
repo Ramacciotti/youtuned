@@ -410,6 +410,11 @@
   const CACHE_KEY = 'youtuned_votes_cache_v1';
   const VOTES_API = 'https://returnyoutubedislikeapi.com/votes?videoId=';
 
+  function isWatchPage() {
+    const params = new URLSearchParams(window.location.search);
+    return window.location.pathname === '/watch' && Boolean(params.get('v'));
+  }
+
   function loadVotesCache() {
     try {
       return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
@@ -544,6 +549,9 @@
 
   // Varre todas thumbnails na página e processa as que encontrara.
   function processAllThumbnails() {
+    if (isWatchPage()) {
+      return;
+    }
     // Seleciona links que levam a vídeos ou shorts corretamente.
     const anchors = Array.from(document.querySelectorAll('a[href*="/watch?v="], a[href*="/shorts/"]'));
     anchors.forEach((a) => processThumbnail(a));
@@ -553,6 +561,9 @@
 
   // Inicia observador para detectar novas thumbnails dinamicamente.
   function iniciarProcessamentoDeThumbnails() {
+    if (isWatchPage()) {
+      return;
+    }
     processAllThumbnails();
     if (thumbnailObserver) return;
     thumbnailObserver = new MutationObserver(() => {
