@@ -307,8 +307,11 @@
       const text = title.textContent || title.innerText || '';
       if (textoContemPalavraBloqueada(text, youtunedSettings.blockedWords)) {
         const hideTarget = findVideoCardForElement(title) || title;
-        if (hideTarget) {
-          hideTarget.remove();
+        if (hideTarget && hideTarget.style.display !== 'none') {
+          hideTarget.style.setProperty('display', 'none', 'important');
+          hideTarget.hidden = true;
+          hideTarget.setAttribute('aria-hidden', 'true');
+          hideTarget.dataset.youtunedBlockedWord = 'true';
         }
       }
     });
@@ -326,6 +329,9 @@
         }
       }
     });
+
+    // Após ocultar itens por palavra bloqueada, limpa containers que ficaram vazios
+    limparItensVazios();
   }
 
   // Função que busca a contagem de dislikes diretamente em uma API pública.
