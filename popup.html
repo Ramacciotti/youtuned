@@ -88,6 +88,18 @@
         border-color: var(--accent);
         box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
       }
+
+      .qr-column {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .qr-label {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
@@ -126,14 +138,24 @@
       <div class="row">
         <label for="author">Sobre a Autora</label>
       </div>
-      <p><a href="https://www.linkedin.com/in/marianaramacciotti/" target="_blank">Linkedin</a>, <a href="https://ramacciotti.github.io/portfolio/" target="_blank">GitHub</a></p>
+      <div class="hint">Olá, tudo bem? Me chamo Ramacciotti e como hobbie desenvolvo projetos focando em bem-estar e saúde mental. Saiba mais no link abaixo!</div>
+      <p><a href="https://ramacciotti.github.io/portfolio/" target="_blank">Portfolio</a></p>
     </section>
 
     <section class="panel">
       <div class="row">
-        <label for="contribute">Apoie com um Pix</label>
+        <label for="contribute">Apoie com um pix de qualquer valor!</label>
       </div>
-      <div class="hint">5c9ace59-8d8a-429a-8ea4-ff96b7969472</div>
+      <div class="hint" style="display:flex; flex-direction:row; justify-content: space-between;">
+        <div class="qr-column">
+          <img src="img/unique.png" alt="QR Code Doação Avulsa" class="qr-code" height="120px" width="120px" />
+          <div class="qr-label">Doação Única</div>
+        </div>
+        <div class="qr-column">
+          <img src="img/monthly.png" alt="QR Code Doação Mensal" class="qr-code" height="120px" width="120px" />
+          <div class="qr-label">Doação mensal</div>
+        </div>
+      </div>
     </section>
 
     <script src="popup.js"></script>
