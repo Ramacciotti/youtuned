@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "YouTuned | Remove Shorts, Restaura dislikes e filtra palavras",
+  "name": "YouTuned | Remove Shorts, Restaura Dislikes e Filtra Palavras",
   "version": "1.0.1",
   "description": "Remove youtube shorts, restaura dislikes e remove vídeos e comentários com palavras bloqueadas",
   "icons": {
